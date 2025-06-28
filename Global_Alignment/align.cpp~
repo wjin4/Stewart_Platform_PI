@@ -1,0 +1,94 @@
+#include <errno.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <iostream>
+
+#include <piusb.hpp>
+#include "aligner.hpp"
+
+#include <fcntl.h>   // For file handling
+#include <termios.h> // Terminal IO
+#include <getopt.h>  // Argument parsing
+#include <cmath>     // For fabs
+
+#define MAX_READ_SIZE 20
+
+#define DEBUG       0
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) fprintf(stderr, fmt, __VA_ARGS__); } while (0)
+
+
+int main(int argc, char* argv[])
+{
+	int c;
+
+	static struct option long_options[] = 
+	{
+		{"laser"       , required_argument , 0    , 'l'} ,
+		{"power"       , required_argument , 0    , 'p'} ,
+		{"shutter"     , required_argument , 0    , 's'} ,
+        	{"mirror"      , required_argument , 0    , 'm'} ,
+        	{"help"        , no_argument       , 0    , 'h'} ,
+        	{NULL          , 0                 , NULL ,  0 }
+    	};
+
+	int option_index = 0;
+	while (true)
+	{
+        	c = getopt_long(argc, argv, "l:p:s:m:r:h", long_options, &option_index);
+        	if (c == (-1)) break;
+		Align align;
+		switch (c) 
+		{
+            		case 0:
+                		printf ("option %s", long_options[option_index].name);
+                		if (optarg)
+                	    		printf (" with arg %s", optarg);
+                		printf ("\n");
+                		break;
+            		case 'l':
+				if (!strcmp(optarg, "on"))
+                    			align.sLaserOn();
+                		if (!strcmp(optarg, "off"))
+                    			align.sLaserOff();
+                		break;
+           		case 'p':
+            			if (!strcmp(optarg, "on"))
+                    			align.powerOn();
+                		if (!strcmp(optarg, "off"))
+                    			align.powerOff();
+                		break;
+            		case 's':
+				if (!strcmp(optarg, "calibrate"))
+                    			align.shutterCalibrate();
+				if (!strcmp(optarg, "open"))
+                    			align.shutterOpen();
+                		if (!strcmp(optarg, "close"))
+                    			align.shutterClose();
+                		break;
+            		case 'm':
+				if (!strcmp(optarg, "calibrate"))
+                    			align.mirrorCalibrate();
+				else
+					{
+						int step = atoi(argv[2]);
+						align.mirrorStep(step);
+					}
+                		break;
+			case 'h': 
+				align.help();
+				break;
+
+			case '?':
+				break;
+
+			default:
+				align.help();
+				//printf ("?? getopt returned character code 0%o ??\n", c);
+				break;
+		}
+	}
+	return 0;
+}

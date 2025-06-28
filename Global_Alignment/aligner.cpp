@@ -1,0 +1,160 @@
+#include "piusb.hpp"
+#include "aligner.hpp"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <string.h>
+#include <iostream>
+#include <time.h>
+#include <unistd.h>
+
+using namespace std;
+
+void Align::sLaserOn()
+{	
+	int laser = 0;
+	Relay relay;	
+	relay.setState(laser,true);
+	cout << "Laser ON.\n";
+}
+
+void Align::sLaserOff()
+{	
+	int laser = 0;
+	Relay relay;	
+	relay.setState(laser,false);	
+	cout << "Laser OFF.\n";
+}
+
+void Align::powerOn()
+{	
+	int power = 1;
+	Relay relay;	
+	relay.setState(power,true);
+	cout << "Battery ON.\n";
+}
+
+void Align::powerOff()
+{	
+	int power = 1;
+	Relay relay;	
+	relay.setState(power,false);	
+	cout << "Battery OFF.\n";
+}
+
+void Align::shutterCalibrate()
+{
+	int calibrate = -350;
+	int velocity = 1;
+	Twister twister;
+	twister.setVelocity(velocity);
+	twister.setPosition(calibrate);
+	twister.setZero();
+	cout << "Shutter CALIBRATED.\n";
+}
+
+void Align::shutterOpen()
+{
+	int velocity = 1;
+	int open = 370;
+	Twister twister;
+	twister.setVelocity(velocity);
+	twister.setPosition(open);
+	cout << "Shutter OPEN.\n";
+}
+
+void Align::shutterClose()
+{
+	int velocity = 1;
+	int close = 0;
+	Twister twister;
+	twister.setVelocity(velocity);
+	twister.setPosition(close);
+	cout << "Shutter CLOSED.\n";
+}
+
+void Align::mirrorCalibrate()
+{
+	int velocity = 10;
+	int cal1 = 2100;
+	int cal2 = 0;
+	Motor motor;
+	motor.setVelocity(velocity);
+	motor.setPosition(cal1);
+	motor.setPosition(cal2);
+	cout << "Mirror POSITION CALIBRATED\n";
+}
+
+void Align::mirrorStep(int step)
+{
+	int velocity = 10;
+	Motor motor;
+	motor.setVelocity(velocity);
+	int current_pos = motor.getPosition();
+	int new_pos = current_pos + step;
+	motor.setPosition(new_pos);
+	cout << "Position set: " << motor.getPosition() << endl;
+}
+
+void Align::mirrorPos(int pos)
+{
+	int velocity = 10;
+	Motor motor;
+	motor.setVelocity(velocity);
+	int _position[3] = {_a, _b, _c};
+	int new_pos = _position[pos];
+	motor.setPosition(new_pos);
+	cout << "Position set: " << motor.getPosition() << endl;	
+}
+
+int Align::help () {
+    char usage [] = "\nAlign Help Menu      						  "
+	"\n										  "
+	"\nUsage:  align [arguments]	                                                  "
+        "\n   e.g. align --laser on       , or align -l on                                "
+        "\n        align --power off      , or align -p off                               "
+        "\n        align --shutter open   , or align -s open                              "
+        "\n        align --mirror b       , or align -m b                                 "
+        "\n                                                                               "
+        "\nArguments:                                                                     "
+        "\n    --laser <on|off>                 Turns the laser on or off     		  "
+        "\n                                                                               "
+        "\n    --power <on|off>                 Turns the power on or off     		  "
+        "\n                                                                               "
+        "\n    --shutter <calibrate>            IMPORTANT!!!		                  "
+        "\n                                     Calibrates the shutter                    "
+        "\n                                     Be sure to calibrate before first use     "
+        "\n                                                                               "
+        "\n    --shutter <open|close>           Open or close the shutter                 "
+        "\n                                                                               "
+	"\n    --mirror <calibrate>             IMPORTANT!!!		                  "
+        "\n                                     Calibrates the mirror                     "
+        "\n                                     Be sure to calibrate before first use     "
+	"\n                                                                               "
+        "\n    --mirror <step>                  Extend or retract motor by a number of    "
+ 	"\n                                     steps. Range is from 0 - 2000. If steps   "
+ 	"\n                                     requested go beyond limit, motor will be  "
+ 	"\n                                     sent to limit.                            "
+        "\n                                     + int to extend / - int to retract        "
+        "\n                                                                               "
+	"\n    --mirror <position>		Go to one of three set positions (a, b, c)"
+	"\n					'a' = 0                                   "
+	"\n					'b' = 1030                                "
+	"\n					'c' = 2000		                  "
+        "\n                                                                               "
+        "\n   --help                            Print this message.                       ";
+    printf("%s\n", usage);
+return 0;
+}
+
+
+
+Align::Align()
+{
+}
+
+Align::~Align()
+{
+}
+
