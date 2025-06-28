@@ -1,1 +1,0 @@
-X0, Y0, X1, Y1, σ_X0, σ_Y0, σ_X1, σ_Y1, Actuator_1, Actuator_2
