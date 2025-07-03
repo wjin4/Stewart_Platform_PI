@@ -1,3 +1,5 @@
+# How to compile 
+
 ## make clean
 ## make 
 ### This step compile libusb. libusb.cpp ->piusb.hpp needs include <libusb-1.0/libusb.h> 
