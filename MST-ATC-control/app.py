@@ -63,6 +63,16 @@ class Channel:
             self.ser.flush()
         self.log(f'TX {payload!r} (no OK expected)')
 
+    def poll_response(self):
+        """Read and log unsolicited bytes while the test is waiting."""
+        with self.io_lock:
+            if not self.ser or not self.ser.is_open:
+                raise RuntimeError(f'{self.name} disconnected')
+            chunk = self.ser.read(128)
+        if chunk:
+            self.log(f'RX {chunk!r}')
+        return chunk
+
     def exchange(self, command, ending, timeout, duration_deadline=None):
         # Only the channel worker or an idle manual request calls this method.
         payload = command.encode('utf-8') + {'lf': b'\n', 'crlf': b'\r\n', 'cr': b'\r', 'none': b''}[ending]
@@ -79,9 +89,12 @@ class Channel:
             with self.io_lock:
                 chunk = self.ser.read(128)
             if chunk:
+                self.log(f'RX {chunk!r}')
                 buffer.extend(chunk)
                 if len(buffer) > 8192:
                     raise ValueError('Response exceeds 8192 bytes')
+                if b'BUSY' in bytes(buffer).upper():
+                    raise RuntimeError(f'{self.name} returned BUSY for {command!r}; command may have been rejected')
                 # Accept OK on a complete CR/LF-delimited line, or bare OK.
                 lines = bytes(buffer).replace(b'\r', b'\n').split(b'\n')
                 if any(line.strip() == b'OK' for line in lines):
@@ -276,8 +289,9 @@ def test_start():
     step = int(data.get('step', 1000))
     maximum = int(data.get('maximum', 20000))
     timeout = float(data.get('timeout', 30))
+    stroke_time = float(data.get('stroke_time', 40))
     with mode_lock:
-        position_test.start(step, maximum, timeout)
+        position_test.start(step, maximum, timeout, stroke_time)
     return jsonify(ok=True)
 
 @app.post('/api/test/stop')

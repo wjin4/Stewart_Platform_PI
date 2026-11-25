@@ -1,34 +1,20 @@
-# Raspberry Pi 5 Dual Actuator Controller
+# Dual Actuator Controller — Raspberry Pi 5
 
-Mobile web UI with **Manual Control** and **Automatic Position Test**. USB serial defaults: **9600 baud, 8N1, no flow control, no appended newline**. Commands are ASCII; `OK` (with or without newline) is treated as completion. `s` stops an actuator immediately (no newline).
-
-## Install with Mamba
-
-On 64-bit Raspberry Pi OS (`uname -m` should show `aarch64`), install [Miniforge](https://github.com/conda-forge/miniforge) if needed:
+## Install (64-bit Raspberry Pi OS)
+Install Miniforge for Linux aarch64 from https://github.com/conda-forge/miniforge, initialize the shell, then:
 
 ```sh
-cd ~
-wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh
-bash Miniforge3-Linux-aarch64.sh
-source ~/.bashrc
 mamba create -n actuator -c conda-forge python=3.11 flask pyserial -y
-sudo usermod -aG dialout "$USER"   # log out and back in once
-```
-
-## Start the website
-
-```sh
-cd ~/Stewart_Platform_PI/MST-ATC-control
 mamba activate actuator
+cd ~/Stewart_Platform_PI/MST-ATC-control
 python app.py
 ```
 
-On your phone (same LAN), open **http://10.0.1.36:5000**. Choose **Manual Control**, refresh USB devices, select two *different* ports, and connect both. Send a command once or run independent count/duration loops; each loop waits for `OK`. Stop sends `s`.
+Visit **http://10.0.1.36:5000** on a phone on the same LAN. If serial access is denied, run `sudo usermod -aG dialout $USER`, then log out and back in.
 
-## Automatic Position Test
+## Use
+In **Manual Control**, select and connect a different USB serial port for each actuator. Default serial settings are 9600 baud, 8N1, no flow control, RTS/DTR off, and no appended newline. Manual mode supports independent send, loops, and stop (`s`).
 
-Switch to **Automatic Position Test**. Set step (default `1000`), maximum position (`20000`), and OK timeout (`30` seconds). Confirm clear travel and press **Start Position Test**. The test sends A1 `<`, then A1 `P1000`, A2 `<`, A2 `>`, then A1 `P2000`, etc., through `P20000`; finally A1 `>` and one last A2 `<`, A2 `>` cycle. Every command waits for `OK`. **Stop Both** sends `s` to both channels; errors/timeouts also attempt to stop both. Manual commands are blocked during the test. Live progress and logs appear on the page.
+In **Automatic Position Test**, first **manually move Actuator A fully to `>` and wait for it to stop**. Set position step (default 1000), maximum (20000), full-stroke wait (default 40 s), and OK timeout. The sequence is `A:P01000`, `B:<`, `B:>`, ... through `A:P20000`, then `A:<`, `B:<`, `B:>`. Position commands wait 3 seconds without OK; `<` and `>` wait for OK and then the configurable stroke duration. Raw received bytes are logged during command acknowledgment and movement waits. A `BUSY` response stops the test and attempts to send `s` to both actuators. **Stop Both** also sends `s`.
 
-The original CLI sweep is also available: `python actuator_position_test.py --dry-run` or run with `--port1 /dev/ttyUSB0 --port2 /dev/ttyUSB1 --timeout 30` **after stopping the web server**.
-
-**Safety:** Test only with clear travel, correct USB port assignments, and a physical emergency stop. `OK` must indicate motion completion, not mere command receipt. This LAN-only site has no authentication; do not expose it to the internet. Software/USB/network stopping is not safety-rated.
+`OK` acknowledges command receipt, **not completed motion**. Fixed waits do not verify position; adjust them conservatively. Do not run another process using these USB ports. This is an unauthenticated LAN-only controller: do not expose it to the internet. Software stopping is not a hardware emergency stop.

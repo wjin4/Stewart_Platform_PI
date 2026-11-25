@@ -7,7 +7,7 @@ POSITION_WAIT_SECONDS = 3.0
 
 
 def sequence(step, maximum):
-    yield 'a', '>'
+    # Actuator A must already be fully at '>' before starting.
     for position in range(step, maximum + 1, step):
         yield 'a', f'P{position:05d}'
         yield 'b', '<'
@@ -40,11 +40,13 @@ class PositionTest:
                         completed=self.completed, total=self.total, current=self.current,
                         logs=list(self.logs))
 
-    def start(self, step, maximum, timeout):
+    def start(self, step, maximum, timeout, stroke_time=40.0):
         if not (1 <= step <= 20000 and 1 <= maximum <= 20000 and maximum % step == 0):
             raise ValueError('Step must divide maximum position (1 to 20000)')
         if not 0.1 <= timeout <= 3600:
             raise ValueError('Timeout must be between 0.1 and 3600 seconds')
+        if not 1 <= stroke_time <= 300:
+            raise ValueError('Stroke time must be 1 to 300 seconds')
         with self.lock:
             if self.running:
                 raise ValueError('Test already running')
@@ -58,10 +60,10 @@ class PositionTest:
             self.state = 'running'
             self.error = None
             self.completed = 0
-            self.total = 3 * (maximum // step) + 4
+            self.total = 3 * (maximum // step) + 3
             self.current = ''
             self.logs.clear()
-            threading.Thread(target=self._run, args=(step, maximum, timeout), daemon=True).start()
+            threading.Thread(target=self._run, args=(step, maximum, timeout, stroke_time), daemon=True).start()
 
     def stop(self):
         self.cancel.set()
@@ -71,7 +73,25 @@ class PositionTest:
         for ch in self.channels.values():
             ch.send_stop()
 
-    def _run(self, step, maximum, timeout):
+    def wait_with_monitor(self, seconds, channel):
+        """Log incoming data during motion; abort on BUSY or cancellation."""
+        deadline = time.monotonic() + seconds
+        pending = bytearray()
+        while time.monotonic() < deadline:
+            if self.cancel.is_set() or channel.stop_event.is_set():
+                raise InterruptedError('Cancelled')
+            chunk = channel.poll_response()
+            if chunk:
+                pending.extend(chunk)
+                if len(pending) > 8192:
+                    pending = pending[-8192:]
+                if b'BUSY' in bytes(pending).upper():
+                    raise RuntimeError(f'{channel.name} returned BUSY during movement')
+            remaining = deadline - time.monotonic()
+            if remaining > 0 and self.cancel.wait(min(0.1, remaining)):
+                raise InterruptedError('Cancelled')
+
+    def _run(self, step, maximum, timeout, stroke_time):
         try:
             for cid, command in sequence(step, maximum):
                 if self.cancel.is_set():
@@ -83,12 +103,14 @@ class PositionTest:
                 if command.startswith('P'):
                     self.channels[cid].send(command, 'none')
                     self.log(f'WAIT {POSITION_WAIT_SECONDS:g}s: {current} (no OK expected)')
-                    if self.cancel.wait(POSITION_WAIT_SECONDS):
-                        raise InterruptedError('Cancelled')
+                    self.wait_with_monitor(POSITION_WAIT_SECONDS, self.channels[cid])
                     self.log(f'WAIT DONE: {current}')
                 else:
                     self.channels[cid].exchange(command, 'none', timeout)
-                    self.log(f'RX OK: {current}')
+                    self.log(f'ACK OK (motion may still be running): {current}')
+                    self.log(f'WAIT {stroke_time:g}s: {current} (full stroke)')
+                    self.wait_with_monitor(stroke_time, self.channels[cid])
+                    self.log(f'WAIT DONE: {current}')
                 if self.cancel.is_set():
                     raise InterruptedError('Cancelled')
                 with self.lock:
