@@ -1,16 +1,18 @@
-"""Background position sweep using the web server's already-open serial channels."""
+"""Web-controlled, sequential two-actuator position sweep."""
 import threading
 import time
 from collections import deque
 
+POSITION_WAIT_SECONDS = 3.0
+
 
 def sequence(step, maximum):
-    yield 'a', '<'
+    yield 'a', '>'
     for position in range(step, maximum + 1, step):
-        yield 'a', f'P{position}'
+        yield 'a', f'P{position:05d}'
         yield 'b', '<'
         yield 'b', '>'
-    yield 'a', '>'
+    yield 'a', '<'
     yield 'b', '<'
     yield 'b', '>'
 
@@ -66,7 +68,6 @@ class PositionTest:
         for ch in self.channels.values():
             ch.stop_event.set()
         self.log('Stop requested')
-        # Send stop now, rather than waiting for a worker timeout.
         for ch in self.channels.values():
             ch.send_stop()
 
@@ -75,15 +76,23 @@ class PositionTest:
             for cid, command in sequence(step, maximum):
                 if self.cancel.is_set():
                     raise InterruptedError('Cancelled')
+                current = f'Actuator {cid.upper()}: {command}'
                 with self.lock:
-                    self.current = f'Actuator {cid.upper()}: {command}'
-                self.log(f'TX {self.current}')
-                self.channels[cid].exchange(command, 'none', timeout)
+                    self.current = current
+                self.log(f'TX {current}')
+                if command.startswith('P'):
+                    self.channels[cid].send(command, 'none')
+                    self.log(f'WAIT {POSITION_WAIT_SECONDS:g}s: {current} (no OK expected)')
+                    if self.cancel.wait(POSITION_WAIT_SECONDS):
+                        raise InterruptedError('Cancelled')
+                    self.log(f'WAIT DONE: {current}')
+                else:
+                    self.channels[cid].exchange(command, 'none', timeout)
+                    self.log(f'RX OK: {current}')
                 if self.cancel.is_set():
                     raise InterruptedError('Cancelled')
                 with self.lock:
                     self.completed += 1
-                self.log(f'RX OK: {self.current}')
             with self.lock:
                 self.state = 'complete'
                 self.current = 'Finished'
@@ -98,7 +107,6 @@ class PositionTest:
                 self.error = str(exc)
             self.log(f'ERROR {exc}')
         finally:
-            # Stop both at the end, including successful completion.
             for ch in self.channels.values():
                 ch.send_stop()
             with self.lock:

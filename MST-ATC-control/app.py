@@ -51,6 +51,18 @@ class Channel:
             self.port = None
             self.log('Disconnected')
 
+    def send(self, command, ending='none'):
+        """Send a command without waiting for an OK response."""
+        endings = {'lf': b'\n', 'crlf': b'\r\n', 'cr': b'\r', 'none': b''}
+        payload = command.encode('utf-8') + endings[ending]
+        with self.io_lock:
+            if not self.ser or not self.ser.is_open:
+                raise RuntimeError('Serial port is not connected')
+            self.ser.reset_input_buffer()
+            self.ser.write(payload)
+            self.ser.flush()
+        self.log(f'TX {payload!r} (no OK expected)')
+
     def exchange(self, command, ending, timeout, duration_deadline=None):
         # Only the channel worker or an idle manual request calls this method.
         payload = command.encode('utf-8') + {'lf': b'\n', 'crlf': b'\r\n', 'cr': b'\r', 'none': b''}[ending]
