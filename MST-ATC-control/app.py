@@ -4,6 +4,7 @@ from collections import deque
 from flask import Flask, jsonify, render_template, request
 import serial
 from serial.tools import list_ports
+from position_test import PositionTest
 
 app = Flask(__name__)
 
@@ -147,6 +148,12 @@ class Channel:
                         error=self.error, logs=list(self.logs))
 
 channels = {'a': Channel('Actuator A'), 'b': Channel('Actuator B')}
+position_test = PositionTest(channels)
+mode_lock = threading.RLock()
+
+def ensure_manual():
+    if position_test.running:
+        raise ValueError('Automatic test is running; use Stop Both first')
 
 def get_channel(cid):
     if cid not in channels:
@@ -195,12 +202,16 @@ def connect(cid):
     baud = int(data.get('baud', 9600))
     if not 300 <= baud <= 4000000:
         raise ValueError('Invalid baud rate')
-    ch.connect(port, baud)
+    with mode_lock:
+        ensure_manual()
+        ch.connect(port, baud)
     return jsonify(ok=True)
 
 @app.post('/api/<cid>/disconnect')
 def disconnect(cid):
-    get_channel(cid).disconnect()
+    with mode_lock:
+        ensure_manual()
+        get_channel(cid).disconnect()
     return jsonify(ok=True)
 
 @app.post('/api/<cid>/start')
@@ -214,12 +225,18 @@ def start(cid):
         raise ValueError('Invalid loop mode or limit')
     if mode == 'count' and not limit.is_integer():
         raise ValueError('Count must be an integer')
-    ch.start(command, ending, timeout, mode, limit)
+    with mode_lock:
+        ensure_manual()
+        ch.start(command, ending, timeout, mode, limit)
     return jsonify(ok=True)
 
 @app.post('/api/<cid>/stop')
 def stop(cid):
-    get_channel(cid).stop()
+    with mode_lock:
+        if position_test.running:
+            position_test.stop()
+        else:
+            get_channel(cid).stop()
     return jsonify(ok=True)
 
 @app.post('/api/<cid>/send')
@@ -227,13 +244,38 @@ def send(cid):
     ch = get_channel(cid)
     data = request.get_json(force=True)
     command, ending, timeout = settings(data)
-    with ch.lock:
+    with mode_lock, ch.lock:
+        ensure_manual()
         if ch.running:
             raise ValueError('Stop the loop before manual send')
         if not ch.ser or not ch.ser.is_open:
             raise ValueError('Connect first')
         ch.stop_event.clear()
         ch.exchange(command, ending, timeout)
+    return jsonify(ok=True)
+
+@app.get('/api/test/status')
+def test_status():
+    return jsonify(position_test.status())
+
+@app.post('/api/test/start')
+def test_start():
+    data = request.get_json(force=True)
+    step = int(data.get('step', 1000))
+    maximum = int(data.get('maximum', 20000))
+    timeout = float(data.get('timeout', 30))
+    with mode_lock:
+        position_test.start(step, maximum, timeout)
+    return jsonify(ok=True)
+
+@app.post('/api/test/stop')
+def test_stop():
+    with mode_lock:
+        if position_test.running:
+            position_test.stop()
+        else:
+            for ch in channels.values():
+                ch.stop()
     return jsonify(ok=True)
 
 if __name__ == '__main__':
