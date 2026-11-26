@@ -5,9 +5,10 @@ body{font:16px system-ui,sans-serif;background:#f4f6fa;color:#17243b;margin:0;pa
 .tabs{display:flex;gap:8px;margin:16px 0}.tabs button{flex:1}.hidden{display:none}.testlog{height:250px}
 </style></head><body><main><h1>Dual USB Actuator Controller</h1><p class="muted">Each channel operates independently. Connect only on a trusted local network.</p><div class="tabs"><button onclick="showTab('manual')">Manual Control</button><button onclick="showTab('test')">Automatic Position Test</button></div>
 <section id="manual"><button onclick="refreshPorts()">Refresh USB devices</button><div class="grid" id="cards"></div></section>
-<section id="test" class="card hidden"><h2>Coordinated Position Sweep</h2><p class="muted">Connect both USB channels in Manual Control first. Manual motion is locked during a test. Commands have no newline. Test starts A1 at &lt;, moves A1 through P1000 ... P20000, cycles A2 (&lt; then &gt;) at every position, then retracts A1 (&gt;) and cycles A2 once more.</p>
+<section id="test" class="card hidden"><h2>Coordinated Position Sweep</h2><p class="muted">Connect both USB channels in Manual Control first. Manual motion is locked during a test. Commands have no newline. Manually move Actuator A fully to &gt; and confirm it has stopped before starting. The test sends P01000 ... P20000 (3-second waits), cycles B (&lt; then &gt;) at each position, then sends A &lt; and cycles B once more. &lt; and &gt; require OK plus an adjustable full-stroke wait. BUSY stops the test.</p>
 <label>Position step</label><input id="test-step" type="number" min="1" max="20000" value="1000">
 <label>Maximum position</label><input id="test-maximum" type="number" min="1" max="20000" value="20000">
+<label>Full-stroke movement time (seconds)</label><input id="test-stroke-time" type="number" min="1" max="300" step="0.5" value="40">
 <label>OK timeout per command (seconds)</label><input id="test-timeout" type="number" min="0.1" step="0.1" value="30">
 <div class="row"><button class="primary" onclick="startTest()">Start Position Test</button><button class="danger" onclick="stopTest()">Stop Both (s)</button></div>
 <div id="test-status" class="status">Idle</div><div id="test-error" class="error"></div><pre class="testlog" id="test-log"></pre>
@@ -15,7 +16,7 @@ body{font:16px system-ui,sans-serif;background:#f4f6fa;color:#17243b;margin:0;pa
 <script>
 const ids=['a','b'];let ports=[];
 function showTab(tab){document.getElementById('manual').classList.toggle('hidden',tab!=='manual');document.getElementById('test').classList.toggle('hidden',tab!=='test')}
-async function startTest(){if(!confirm('Confirm both actuator travel paths are clear and hardware emergency stop is available. Start test?'))return;try{await api('/api/test/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step:document.getElementById('test-step').value,maximum:document.getElementById('test-maximum').value,timeout:document.getElementById('test-timeout').value})});await pollTest()}catch(e){document.getElementById('test-error').textContent=e.message}}
+async function startTest(){if(!confirm('Confirm both actuator travel paths are clear and hardware emergency stop is available. Start test?'))return;try{await api('/api/test/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step:document.getElementById('test-step').value,maximum:document.getElementById('test-maximum').value,timeout:document.getElementById('test-timeout').value,stroke_time:document.getElementById('test-stroke-time').value})});await pollTest()}catch(e){document.getElementById('test-error').textContent=e.message}}
 async function stopTest(){try{await api('/api/test/stop',{method:'POST'});await pollTest()}catch(e){document.getElementById('test-error').textContent=e.message}}
 async function pollTest(){try{const d=await api('/api/test/status');document.getElementById('test-status').textContent=`${d.state.toUpperCase()} | ${d.completed}/${d.total} commands | ${d.current}`;document.getElementById('test-error').textContent=d.error||'';document.getElementById('test-log').textContent=d.logs.join('\n')}catch(e){console.error(e)}}
 
